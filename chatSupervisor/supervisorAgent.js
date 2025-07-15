@@ -4,7 +4,7 @@ export class SupervisorAgent extends RealtimeAgent {
   constructor(tools) {
     super({
       name: 'HR Assistant',
-      model: 'gpt-4o-mini',
+      model: 'gpt-4',
       tools: tools || [],
       instructions: `Du bist der BackOffice Spezialist im HR Bereich der NEA. Du bist im direkten Telefonkontakt mit einem Angestellten.
 
@@ -27,15 +27,27 @@ Beispiele für Tool-Nutzung:
 - "Ich möchte Urlaub" → "Gerne. Ich brauche Ihren Namen und die Urlaubsdaten" (dann reportEmployeeVacation benutzen)`,
       responseFormat: {
         type: 'text',
+        voice: 'alloy',
         schema: {
           type: 'object',
           properties: {
-            response: { type: 'string' },
-            shouldUseTool: { type: 'boolean' },
-            toolName: { type: 'string' },
-            toolArgs: { type: 'object' }
+            content: { 
+              type: 'string',
+              description: 'The response text in German'
+            },
+            toolCalls: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  arguments: { type: 'object' }
+                },
+                required: ['name', 'arguments']
+              }
+            }
           },
-          required: ['response', 'shouldUseTool']
+          required: ['content']
         }
       }
     });
@@ -51,30 +63,26 @@ Beispiele für Tool-Nutzung:
       console.log('Got response from super.handleMessage');
       console.log('Response:', JSON.stringify(response, null, 2));
       
-      // Check if the response indicates a tool should be used
-      if (response.shouldUseTool && response.toolName && response.toolArgs) {
-        console.log('\n🛠️ TOOL CALL REQUESTED 🛠️');
-        console.log('Tool:', response.toolName);
-        console.log('Args:', response.toolArgs);
+      // Process any tool calls
+      if (response.toolCalls && response.toolCalls.length > 0) {
+        console.log('\n🛠️ PROCESSING TOOL CALLS 🛠️');
         
-        // Find the tool in our tools array
-        const tool = this.tools.find(t => t.name === response.toolName);
-        if (tool) {
-          try {
-            const result = await tool.function(response.toolArgs);
-            console.log('\n✅ TOOL CALL SUCCESSFUL');
-            console.log('Result:', result);
-            return {
-              content: response.response,
-              toolCalls: [{
-                name: response.toolName,
-                arguments: JSON.stringify(response.toolArgs),
-                result: result
-              }]
-            };
-          } catch (error) {
-            console.error('\n❌ TOOL CALL FAILED');
-            console.error(error);
+        for (const toolCall of response.toolCalls) {
+          console.log(`Processing tool: ${toolCall.name}`);
+          console.log('Arguments:', toolCall.arguments);
+          
+          const tool = this.tools.find(t => t.name === toolCall.name);
+          if (tool) {
+            try {
+              const result = await tool.function(toolCall.arguments);
+              console.log('\n✅ TOOL CALL SUCCESSFUL');
+              console.log('Result:', result);
+              toolCall.result = result;
+            } catch (error) {
+              console.error('\n❌ TOOL CALL FAILED');
+              console.error(error);
+              toolCall.error = error.message;
+            }
           }
         }
       }

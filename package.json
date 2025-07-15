@@ -6,8 +6,8 @@
   },
   "type": "module",
   "dependencies": {
-    "@openai/agents": "^0.1.0",
-    "@openai/agents-extensions": "^0.1.0",
+    "@openai/agents": "^0.0.11",
+    "@openai/agents-extensions": "^0.0.11",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "firebase": "^10.7.0",

@@ -55,7 +55,6 @@ const examplePolicyDocs = {
 // Tool definitions
 const supervisorAgentTools = [
   {
-    type: "function",
     name: "lookupPolicyDocument",
     description: "Tool zum Nachschlagen interner Dokumente und Richtlinien nach Thema oder Schlüsselwort.",
     parameters: {
@@ -68,9 +67,12 @@ const supervisorAgentTools = [
       },
       required: ["topic"],
     },
+    needsApproval: () => false,
+    execute: async (params) => {
+      return examplePolicyDocs[params.topic] || "Keine Richtlinie zu diesem Thema gefunden.";
+    }
   },
   {
-    type: "function",
     name: "updateEmployeeKrankStatus",
     description: "Tool zum Aktualisieren des Krankheitsstatus eines Mitarbeiters mit Grund und Zeitpunkt.",
     parameters: {
@@ -95,9 +97,18 @@ const supervisorAgentTools = [
       },
       required: ["name", "isKrank"],
     },
+    needsApproval: () => false,
+    execute: async (params) => {
+      const updateResult = await updateEmployee(params.name, {
+        isKrank: params.isKrank,
+        reason: params.reason,
+        reportedAt: params.reportedAt || new Date().toISOString()
+      });
+      console.log('Employee status updated:', updateResult);
+      return updateResult;
+    }
   },
   {
-    type: "function",
     name: "reportEmployeeSick",
     description: "Tool zum Melden einer Krankmeldung eines Mitarbeiters.",
     parameters: {
@@ -114,9 +125,14 @@ const supervisorAgentTools = [
       },
       required: ["name"],
     },
+    needsApproval: () => false,
+    execute: async (params) => {
+      const sickResult = await reportSick(params.name, params.reason);
+      console.log('Sick report created:', sickResult);
+      return sickResult;
+    }
   },
   {
-    type: "function",
     name: "reportEmployeeVacation",
     description: "Tool zum Melden eines Urlaubs eines Mitarbeiters.",
     parameters: {
@@ -145,9 +161,24 @@ const supervisorAgentTools = [
       },
       required: ["name", "startDate", "endDate"],
     },
+    needsApproval: () => false,
+    execute: async (params) => {
+      const vacationResult = {
+        success: true,
+        message: "Urlaub wurde eingetragen.",
+        data: {
+          name: params.name,
+          startDate: params.startDate,
+          endDate: params.endDate,
+          reason: params.reason,
+          additionalNotes: params.additionalNotes
+        }
+      };
+      console.log('Vacation report created:', vacationResult);
+      return vacationResult;
+    }
   },
   {
-    type: "function",
     name: "sendEmail",
     description: "Sendet eine Benachrichtigung an HR über Krankheit oder Urlaub.",
     parameters: {
@@ -185,9 +216,23 @@ const supervisorAgentTools = [
       },
       required: ["type", "name"],
     },
+    needsApproval: () => false,
+    execute: async (params) => {
+      const emailResult = {
+        success: true,
+        message: "Email wurde gesendet.",
+        data: {
+          type: params.type,
+          name: params.name,
+          reason: params.reason,
+          ...params
+        }
+      };
+      console.log('Email sent:', emailResult);
+      return emailResult;
+    }
   },
   {
-    type: "function",
     name: "getSickLeaveStats",
     description: "Tool zum Abrufen von Krankmeldungsstatistiken für einen bestimmten Zeitraum.",
     parameters: {
@@ -205,55 +250,23 @@ const supervisorAgentTools = [
       },
       required: ["period", "groupBy"],
     },
+    needsApproval: () => false,
+    execute: async (params) => {
+      const { startDate, endDate } = parseDateRange(params.period);
+      const stats = await calculateSickLeaveStats(startDate, endDate, params.groupBy);
+      await updateChartData(stats, `Anzahl der Krankmeldungen für ${params.period}`);
+      console.log('Stats generated:', stats);
+      return {
+        message: `Statistik für ${params.period} wurde erstellt.`,
+        stats: stats
+      };
+    }
   }
 ];
 
-// Tool implementations
-async function handleToolCall(toolName, params) {
-  try {
-    switch (toolName) {
-      case "lookupPolicyDocument":
-        return examplePolicyDocs[params.topic] || "Keine Richtlinie zu diesem Thema gefunden.";
-      
-      case "updateEmployeeKrankStatus":
-        return await updateEmployee(params.name, {
-          isKrank: params.isKrank,
-          reason: params.reason,
-          reportedAt: params.reportedAt || new Date().toISOString()
-        });
-      
-      case "reportEmployeeSick":
-        return await reportSick(params.name, params.reason);
-      
-      case "reportEmployeeVacation":
-        // You need to implement the vacation reporting functionality
-        return { success: true, message: "Urlaub wurde eingetragen." };
-      
-      case "sendEmail":
-        // Implement email sending functionality
-        return { success: true, message: "Email wurde gesendet." };
-      
-      case "getSickLeaveStats":
-        const { startDate, endDate } = parseDateRange(params.period);
-        const stats = await calculateSickLeaveStats(startDate, endDate, params.groupBy);
-        updateChartData(stats, `Anzahl der Krankmeldungen für ${params.period}`);
-        return {
-          message: `Statistik für ${params.period} wurde erstellt.`,
-          stats: stats
-        };
-      
-      default:
-        throw new Error(`Unknown tool: ${toolName}`);
-    }
-  } catch (error) {
-    console.error(`Error executing tool ${toolName}:`, error);
-    throw error;
-  }
-}
-
-// Create the agent with supervisor capabilities
+// Create a new RealtimeAgent instance with the tools
 const agent = new RealtimeAgent({
-  name: 'HR Assistant',
+  tools: supervisorAgentTools,
   instructions: `Du bist der BackOffice Spezialist im HR Bereich der NEA. Du bist im direkten Telefonkontakt mit einem Angestellten.
 
 WICHTIGE DATUMSPARSING-REGELN:
@@ -287,131 +300,47 @@ Sobald alle erforderlichen Daten vorliegen:
 Für Statistiken kannst du das getSickLeaveStats Tool verwenden.
 
 Sprich in kurzen, klaren Sätzen und bestätige immer die eingegebenen Daten bevor du die Tools aufrufst.
-Fange das Gespräch immer mit "Hi, hier spricht der HR Assistent der NEA, wie kann ich dir heute helfen?" an.`,
-  tools: supervisorAgentTools
+Fange das Gespräch immer mit "Hi, hier spricht der HR Assistent der NEA, wie kann ich dir heute helfen?" an.`
 });
 
-// WebSocket server for media streams
-const wss = new WebSocketServer({ 
-  server,
-  path: '/media-stream'
-});
+// WebSocket setup for real-time communication
+const wss = new WebSocketServer({ server });
 
-wss.on('connection', async (ws) => {
-  console.log('New Twilio connection');
-  let isAgentSpeaking = false;
+wss.on('connection', (ws) => {
+  console.log('New WebSocket connection');
   
-  try {
-    // Create Twilio transport layer with turn detection
-    const twilioTransport = new TwilioRealtimeTransportLayer({
-      twilioWebSocket: ws,
-      turnConfig: {
-        mode: 'server_vad',
-        vadLevel: 2,
-        vadTimeoutMs: 1500,
-        interruptible: true,
-        interruptionThresholdMs: 800
-      }
-    });
-
-    // Create and connect session
-    const session = new RealtimeSession(agent, {
-      transport: twilioTransport,
-      sessionOptions: {
-        responseFormat: {
-          type: 'text',
-          voice: 'alloy'
-        },
-        temperature: 0.7,
-        maxTokens: 100
-      }
-    });
-
-    // Handle tool calls
-    session.on('tool_call', async (toolCall) => {
-      try {
-        const result = await handleToolCall(toolCall.name, JSON.parse(toolCall.arguments));
-        session.sendToolResponse(toolCall.id, result);
-      } catch (error) {
-        console.error('Tool call error:', error);
-        session.sendToolResponse(toolCall.id, { error: error.message });
-      }
-    });
-
-    // Track when agent starts/stops speaking
-    session.on('response.started', () => {
-      console.log('Agent started speaking');
-      isAgentSpeaking = true;
-    });
-
-    session.on('response.finished', () => {
-      console.log('Agent finished speaking');
-      isAgentSpeaking = false;
-    });
-
-    // Handle user turns
-    session.on('turn_start', () => {
-      console.log('Turn started - User is speaking');
-      if (isAgentSpeaking) {
-        try {
-          session.stopResponse();
-          console.log('Stopped agent response due to user turn');
-        } catch (error) {
-          if (!error.message?.includes('response_cancel_not_active')) {
-            console.error('Error stopping response:', error);
-          }
-        }
-      }
-    });
-
-    session.on('turn_end', () => {
-      console.log('Turn ended - User finished speaking');
-    });
-
-    await session.connect({
-      apiKey: process.env.OPENAI_API_KEY
-    });
-    
-    console.log('Connected to OpenAI Realtime API');
-    
-    // Handle session close
-    session.on('close', () => {
-      console.log('Session closed');
-      ws.close();
-    });
-
-    // Handle errors
-    session.on('error', (error) => {
-      if (!error?.error?.error?.code?.includes('response_cancel_not_active')) {
-        console.error('Session error:', error);
-      }
-    });
-
-  } catch (error) {
-    console.error('Error setting up session:', error);
-    ws.close();
-  }
-});
-
-// Root route
-app.get('/', (req, res) => {
-  res.send({ message: 'Twilio Media Stream Server is running!' });
-});
-
-// Twilio incoming call route
-app.post('/incoming-call', (req, res) => {
-  const response = new VoiceResponse();
-  response.say('Willkommen bei der NEA HR Hotline.');
-  const connect = response.connect();
-  connect.stream({
-    url: `wss://${req.headers.host}/media-stream`
+  const session = new RealtimeSession(agent);
+  
+  ws.on('message', async (message) => {
+    try {
+      const data = JSON.parse(message);
+      console.log('Received message:', data);
+      
+      const response = await session.sendMessage(data.message);
+      ws.send(JSON.stringify({ type: 'response', content: response }));
+    } catch (error) {
+      console.error('Error processing message:', error);
+      ws.send(JSON.stringify({ type: 'error', content: error.message }));
+    }
   });
   
-  res.type('text/xml');
-  res.send(response.toString());
+  ws.on('close', () => {
+    console.log('Client disconnected');
+    session.cleanup();
+  });
 });
 
-// Start server
+// Express routes
+app.use(express.json());
+
+app.post('/webhook', async (req, res) => {
+  const twiml = new VoiceResponse();
+  // Handle Twilio webhook
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
+// Start the server
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 }); 

@@ -3,7 +3,8 @@ import { RealtimeAgent } from '@openai/agents/realtime';
 export class SupervisorAgent extends RealtimeAgent {
   constructor(tools) {
     super({
-      model: 'gpt-4-turbo-preview',
+      name: 'HR Assistant',
+      model: 'gpt-4o-mini',
       tools: tools || [],
       instructions: `You are a helpful HR assistant that can help with sick leave and vacation requests. 
         You can look up policy documents, report sick leave, and handle vacation requests.

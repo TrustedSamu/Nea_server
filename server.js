@@ -46,6 +46,24 @@ const server = http.createServer(app);
 // Configure port
 const PORT = process.env.PORT || 5050;
 
+// Parse JSON bodies
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Handle incoming calls
+app.post('/incoming-call', (req, res) => {
+  const twiml = new VoiceResponse();
+  
+  // Connect to the media stream websocket
+  twiml.connect()
+    .stream({
+      url: `wss://${req.headers.host}/media-stream`
+    });
+
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
 // Sample data (you can replace this with actual database queries)
 const examplePolicyDocs = {
   "sick_leave": "Employees must notify their supervisor as soon as possible...",
@@ -230,11 +248,9 @@ async function handleToolCall(toolName, params) {
         return await reportSick(params.name, params.reason);
       
       case "reportEmployeeVacation":
-        // You need to implement the vacation reporting functionality
         return { success: true, message: "Urlaub wurde eingetragen." };
       
       case "sendEmail":
-        // Implement email sending functionality
         return { success: true, message: "Email wurde gesendet." };
       
       case "getSickLeaveStats":
@@ -256,9 +272,13 @@ async function handleToolCall(toolName, params) {
 }
 
 // WebSocket setup for real-time communication
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ 
+  server,
+  path: '/media-stream'  // Add explicit path
+});
 
 wss.on('connection', (ws) => {
+  console.log('New WebSocket connection established');
   const session = new RealtimeSession();
   const transport = new TwilioRealtimeTransportLayer(ws);
 
@@ -283,24 +303,19 @@ wss.on('connection', (ws) => {
       });
     }
   });
+
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+  });
+
+  ws.on('close', () => {
+    console.log('WebSocket connection closed');
+  });
 });
 
 // Root route
 app.get('/', (req, res) => {
   res.send({ message: 'Twilio Media Stream Server is running!' });
-});
-
-// Twilio incoming call route
-app.post('/incoming-call', (req, res) => {
-  const response = new VoiceResponse();
-  response.say('Willkommen bei der NEA HR Hotline.');
-  const connect = response.connect();
-  connect.stream({
-    url: `wss://${req.headers.host}/media-stream`
-  });
-  
-  res.type('text/xml');
-  res.send(response.toString());
 });
 
 // Start the server

@@ -289,41 +289,48 @@ wss.on('connection', async (ws) => {
 
     // Handle tool calls
     session.on('tool_call', async (toolCall) => {
-      console.log('🛠️ Tool call attempted:', {
-        tool: toolCall.name,
-        args: toolCall.arguments
-      });
+      console.log('\n### TOOL CALL RECEIVED ###');
+      console.log('Tool:', toolCall.name);
+      console.log('Arguments:', toolCall.arguments);
       
       try {
         const result = await toolCall.function(JSON.parse(toolCall.arguments));
-        console.log('✅ Tool result:', result);
+        console.log('\n### TOOL CALL SUCCESSFUL ###');
+        console.log('Result:', result);
         session.sendToolResponse(toolCall.id, result);
       } catch (error) {
-        console.error('❌ Tool call failed:', error);
+        console.error('\n### TOOL CALL FAILED ###');
+        console.error('Error:', error);
         session.sendToolResponse(toolCall.id, { error: error.message });
       }
     });
 
     // Track when agent starts/stops speaking
     session.on('response.started', () => {
+      console.log('\n### AGENT STARTED SPEAKING ###');
       isAgentSpeaking = true;
     });
 
     session.on('response.finished', () => {
+      console.log('\n### AGENT FINISHED SPEAKING ###');
       isAgentSpeaking = false;
     });
 
     // Handle user turns
     session.on('turn_start', () => {
+      console.log('\n### USER TURN STARTED ###');
       if (isAgentSpeaking) {
         try {
           session.stopResponse();
         } catch (error) {
-          if (!error.message?.includes('response_cancel_not_active')) {
-            console.error('Error stopping response:', error);
-          }
+          console.error('\n### ERROR STOPPING RESPONSE ###');
+          console.error(error);
         }
       }
+    });
+
+    session.on('turn_end', () => {
+      console.log('\n### USER TURN ENDED ###');
     });
 
     await session.connect({

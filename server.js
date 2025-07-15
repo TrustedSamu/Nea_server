@@ -304,11 +304,35 @@ Sprich in kurzen, klaren Sätzen und bestätige immer die eingegebenen Daten bev
 Fange das Gespräch immer mit "Hi, hier spricht der HR Assistent der NEA, wie kann ich dir heute helfen?" an.`
 });
 
+// Express routes
+app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // Add this for Twilio webhook body parsing
+
+// Twilio webhook route for incoming calls
+app.post('/incoming-call', (req, res) => {
+  console.log('Incoming call received:', req.body);
+  
+  const twiml = new VoiceResponse();
+  
+  // Connect the call to our WebSocket server for real-time communication
+  const connect = twiml.connect();
+  connect.stream({
+    url: `wss://${req.headers.host}/media-stream`
+  });
+  
+  // Set response headers
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
 // WebSocket setup for real-time communication
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ 
+  server,
+  path: '/media-stream' // Add specific path for media stream
+});
 
 wss.on('connection', (ws) => {
-  console.log('New WebSocket connection');
+  console.log('New WebSocket connection for media stream');
   
   const session = new RealtimeSession(agent);
   
@@ -331,17 +355,8 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Express routes
-app.use(express.json());
-
-app.post('/webhook', async (req, res) => {
-  const twiml = new VoiceResponse();
-  // Handle Twilio webhook
-  res.type('text/xml');
-  res.send(twiml.toString());
-});
-
 // Start the server
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  console.log(`WebSocket server is available at wss://[your-domain]/media-stream`);
 }); 

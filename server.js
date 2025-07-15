@@ -73,7 +73,6 @@ const examplePolicyDocs = {
 // Tool definitions
 const supervisorAgentTools = [
   {
-    type: "function",
     name: "lookupPolicyDocument",
     description: "Tool zum Nachschlagen interner Dokumente und Richtlinien nach Thema oder Schlüsselwort.",
     parameters: {
@@ -86,9 +85,11 @@ const supervisorAgentTools = [
       },
       required: ["topic"],
     },
+    function: async (params) => {
+      return examplePolicyDocs[params.topic] || "Keine Richtlinie zu diesem Thema gefunden.";
+    }
   },
   {
-    type: "function",
     name: "updateEmployeeKrankStatus",
     description: "Tool zum Aktualisieren des Krankheitsstatus eines Mitarbeiters mit Grund und Zeitpunkt.",
     parameters: {
@@ -113,9 +114,15 @@ const supervisorAgentTools = [
       },
       required: ["name", "isKrank"],
     },
+    function: async (params) => {
+      return await updateEmployee(params.name, {
+        isKrank: params.isKrank,
+        reason: params.reason,
+        reportedAt: params.reportedAt || new Date().toISOString()
+      });
+    }
   },
   {
-    type: "function",
     name: "reportEmployeeSick",
     description: "Tool zum Melden einer Krankmeldung eines Mitarbeiters.",
     parameters: {
@@ -132,9 +139,11 @@ const supervisorAgentTools = [
       },
       required: ["name"],
     },
+    function: async (params) => {
+      return await reportSick(params.name, params.reason);
+    }
   },
   {
-    type: "function",
     name: "reportEmployeeVacation",
     description: "Tool zum Melden eines Urlaubs eines Mitarbeiters.",
     parameters: {
@@ -163,9 +172,11 @@ const supervisorAgentTools = [
       },
       required: ["name", "startDate", "endDate"],
     },
+    function: async (params) => {
+      return { success: true, message: "Urlaub wurde eingetragen." };
+    }
   },
   {
-    type: "function",
     name: "sendEmail",
     description: "Sendet eine Benachrichtigung an HR über Krankheit oder Urlaub.",
     parameters: {
@@ -203,9 +214,11 @@ const supervisorAgentTools = [
       },
       required: ["type", "name"],
     },
+    function: async (params) => {
+      return { success: true, message: "Email wurde gesendet." };
+    }
   },
   {
-    type: "function",
     name: "getSickLeaveStats",
     description: "Tool zum Abrufen von Krankmeldungsstatistiken für einen bestimmten Zeitraum.",
     parameters: {
@@ -223,52 +236,20 @@ const supervisorAgentTools = [
       },
       required: ["period", "groupBy"],
     },
+    function: async (params) => {
+      const { startDate, endDate } = parseDateRange(params.period);
+      const stats = await calculateSickLeaveStats(startDate, endDate, params.groupBy);
+      updateChartData(stats, `Anzahl der Krankmeldungen für ${params.period}`);
+      return {
+        message: `Statistik für ${params.period} wurde erstellt.`,
+        stats: stats
+      };
+    }
   }
 ];
 
 // Create supervisor agent instance
 const supervisorAgent = createSupervisorAgent(supervisorAgentTools);
-
-// Tool implementations
-async function handleToolCall(toolName, params) {
-  try {
-    switch (toolName) {
-      case "lookupPolicyDocument":
-        return examplePolicyDocs[params.topic] || "Keine Richtlinie zu diesem Thema gefunden.";
-      
-      case "updateEmployeeKrankStatus":
-        return await updateEmployee(params.name, {
-          isKrank: params.isKrank,
-          reason: params.reason,
-          reportedAt: params.reportedAt || new Date().toISOString()
-        });
-      
-      case "reportEmployeeSick":
-        return await reportSick(params.name, params.reason);
-      
-      case "reportEmployeeVacation":
-        return { success: true, message: "Urlaub wurde eingetragen." };
-      
-      case "sendEmail":
-        return { success: true, message: "Email wurde gesendet." };
-      
-      case "getSickLeaveStats":
-        const { startDate, endDate } = parseDateRange(params.period);
-        const stats = await calculateSickLeaveStats(startDate, endDate, params.groupBy);
-        updateChartData(stats, `Anzahl der Krankmeldungen für ${params.period}`);
-        return {
-          message: `Statistik für ${params.period} wurde erstellt.`,
-          stats: stats
-        };
-      
-      default:
-        throw new Error(`Unknown tool: ${toolName}`);
-    }
-  } catch (error) {
-    console.error(`Error executing tool ${toolName}:`, error);
-    throw error;
-  }
-}
 
 // WebSocket server for media streams
 const wss = new WebSocketServer({ 
@@ -309,7 +290,7 @@ wss.on('connection', async (ws) => {
     // Handle tool calls
     session.on('tool_call', async (toolCall) => {
       try {
-        const result = await handleToolCall(toolCall.name, JSON.parse(toolCall.arguments));
+        const result = await toolCall.function(JSON.parse(toolCall.arguments));
         session.sendToolResponse(toolCall.id, result);
       } catch (error) {
         console.error('Tool call error:', error);

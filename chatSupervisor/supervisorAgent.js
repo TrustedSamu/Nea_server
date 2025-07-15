@@ -14,15 +14,20 @@ export class SupervisorAgent extends RealtimeAgent {
         IMPORTANT: Always use tools when appropriate. For example:
         - When someone mentions being sick, use reportEmployeeSick
         - When someone asks about policies, use lookupPolicyDocument
-        - When someone requests vacation, use reportEmployeeVacation`
+        - When someone requests vacation, use reportEmployeeVacation
+        
+        Make sure to use tools for EVERY relevant request - don't just respond with information without using tools.`
     });
   }
 
   async handleMessage(message, session) {
     try {
-      console.log('SupervisorAgent received message:', message);
       const response = await super.handleMessage(message, session);
-      console.log('SupervisorAgent response:', JSON.stringify(response, null, 2));
+      if (response.toolCalls && response.toolCalls.length > 0) {
+        console.log('🔍 Agent attempting to use tools:', 
+          response.toolCalls.map(call => call.name).join(', ')
+        );
+      }
       return response;
     } catch (error) {
       console.error('Error in supervisor agent:', error);

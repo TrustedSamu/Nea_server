@@ -287,50 +287,37 @@ wss.on('connection', async (ws) => {
       }
     });
 
-    // Log all events for debugging
-    session.on('message', (message) => {
-      console.log('Session received message:', message);
-    });
-
-    session.on('response', (response) => {
-      console.log('Session sending response:', response);
-    });
-
     // Handle tool calls
     session.on('tool_call', async (toolCall) => {
-      console.log('Tool call received:', {
-        name: toolCall.name,
-        arguments: toolCall.arguments
+      console.log('🛠️ Tool call attempted:', {
+        tool: toolCall.name,
+        args: toolCall.arguments
       });
       
       try {
         const result = await toolCall.function(JSON.parse(toolCall.arguments));
-        console.log('Tool call result:', result);
+        console.log('✅ Tool result:', result);
         session.sendToolResponse(toolCall.id, result);
       } catch (error) {
-        console.error('Tool call error:', error);
+        console.error('❌ Tool call failed:', error);
         session.sendToolResponse(toolCall.id, { error: error.message });
       }
     });
 
     // Track when agent starts/stops speaking
     session.on('response.started', () => {
-      console.log('Agent started speaking');
       isAgentSpeaking = true;
     });
 
     session.on('response.finished', () => {
-      console.log('Agent finished speaking');
       isAgentSpeaking = false;
     });
 
     // Handle user turns
     session.on('turn_start', () => {
-      console.log('Turn started - User is speaking');
       if (isAgentSpeaking) {
         try {
           session.stopResponse();
-          console.log('Stopped agent response due to user turn');
         } catch (error) {
           if (!error.message?.includes('response_cancel_not_active')) {
             console.error('Error stopping response:', error);
@@ -339,35 +326,20 @@ wss.on('connection', async (ws) => {
       }
     });
 
-    session.on('turn_end', () => {
-      console.log('Turn ended - User finished speaking');
-    });
-
-    // Log raw WebSocket messages
-    ws.on('message', (data) => {
-      try {
-        const message = JSON.parse(data);
-        console.log('Raw WebSocket message received:', message);
-      } catch (e) {
-        console.log('Raw WebSocket data received:', data);
-      }
-    });
-
     await session.connect({
       apiKey: process.env.OPENAI_API_KEY
     });
     
-    console.log('Connected to OpenAI Realtime API');
-    
     // Handle session close
     session.on('close', () => {
-      console.log('Session closed');
       ws.close();
     });
 
     // Handle errors
     session.on('error', (error) => {
-      console.error('Session error:', error);
+      if (error.message?.includes('tool')) {
+        console.error('Tool-related error:', error);
+      }
     });
 
   } catch (error) {

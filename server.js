@@ -53,8 +53,7 @@ app.use(express.urlencoded({ extended: true }));
 // Handle incoming calls
 app.post('/incoming-call', (req, res) => {
   const twiml = new VoiceResponse();
-  
-  // Connect to the media stream websocket
+  twiml.say('Willkommen bei der NEA HR Hotline.');
   twiml.connect()
     .stream({
       url: `wss://${req.headers.host}/media-stream`
@@ -271,51 +270,106 @@ async function handleToolCall(toolName, params) {
   }
 }
 
-// WebSocket setup for real-time communication
+// WebSocket server for media streams
 const wss = new WebSocketServer({ 
   server,
-  path: '/media-stream'  // Add explicit path
+  path: '/media-stream'
 });
 
-wss.on('connection', (ws) => {
-  console.log('New WebSocket connection established');
-  const session = new RealtimeSession();
-  const transport = new TwilioRealtimeTransportLayer(ws);
+wss.on('connection', async (ws) => {
+  console.log('New Twilio connection');
+  let isAgentSpeaking = false;
+  
+  try {
+    // Create Twilio transport layer with turn detection
+    const twilioTransport = new TwilioRealtimeTransportLayer({
+      twilioWebSocket: ws,
+      turnConfig: {
+        mode: 'server_vad',
+        vadLevel: 2,
+        vadTimeoutMs: 1500,
+        interruptible: true,
+        interruptionThresholdMs: 800
+      }
+    });
 
-  ws.on('message', async (message) => {
-    try {
-      const data = JSON.parse(message);
-      const response = await supervisorAgent.handleMessage(data.message, session);
-      
-      if (response.toolCalls && response.toolCalls.length > 0) {
-        for (const toolCall of response.toolCalls) {
-          const result = await handleToolCall(toolCall.name, toolCall.parameters);
-          await supervisorAgent.submitToolResponse(result, toolCall.id, session);
+    // Create and connect session
+    const session = new RealtimeSession(supervisorAgent, {
+      transport: twilioTransport,
+      sessionOptions: {
+        responseFormat: {
+          type: 'text',
+          voice: 'alloy'
+        },
+        temperature: 0.7,
+        maxTokens: 100
+      }
+    });
+
+    // Handle tool calls
+    session.on('tool_call', async (toolCall) => {
+      try {
+        const result = await handleToolCall(toolCall.name, JSON.parse(toolCall.arguments));
+        session.sendToolResponse(toolCall.id, result);
+      } catch (error) {
+        console.error('Tool call error:', error);
+        session.sendToolResponse(toolCall.id, { error: error.message });
+      }
+    });
+
+    // Track when agent starts/stops speaking
+    session.on('response.started', () => {
+      console.log('Agent started speaking');
+      isAgentSpeaking = true;
+    });
+
+    session.on('response.finished', () => {
+      console.log('Agent finished speaking');
+      isAgentSpeaking = false;
+    });
+
+    // Handle user turns
+    session.on('turn_start', () => {
+      console.log('Turn started - User is speaking');
+      if (isAgentSpeaking) {
+        try {
+          session.stopResponse();
+          console.log('Stopped agent response due to user turn');
+        } catch (error) {
+          if (!error.message?.includes('response_cancel_not_active')) {
+            console.error('Error stopping response:', error);
+          }
         }
       }
-      
-      transport.sendMessage(response);
-    } catch (error) {
-      console.error('Error processing message:', error);
-      transport.sendMessage({
-        content: 'An error occurred while processing your request.',
-        toolCalls: []
-      });
-    }
-  });
+    });
 
-  ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
-  });
+    session.on('turn_end', () => {
+      console.log('Turn ended - User finished speaking');
+    });
 
-  ws.on('close', () => {
-    console.log('WebSocket connection closed');
-  });
-});
+    await session.connect({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+    
+    console.log('Connected to OpenAI Realtime API');
+    
+    // Handle session close
+    session.on('close', () => {
+      console.log('Session closed');
+      ws.close();
+    });
 
-// Root route
-app.get('/', (req, res) => {
-  res.send({ message: 'Twilio Media Stream Server is running!' });
+    // Handle errors
+    session.on('error', (error) => {
+      if (!error?.error?.error?.code?.includes('response_cancel_not_active')) {
+        console.error('Session error:', error);
+      }
+    });
+
+  } catch (error) {
+    console.error('Error setting up session:', error);
+    ws.close();
+  }
 });
 
 // Start the server

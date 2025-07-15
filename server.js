@@ -266,6 +266,7 @@ const supervisorAgentTools = [
 
 // Create a new RealtimeAgent instance with the tools
 const agent = new RealtimeAgent({
+  name: "HR Assistant",
   tools: supervisorAgentTools,
   instructions: `Du bist der BackOffice Spezialist im HR Bereich der NEA. Du bist im direkten Telefonkontakt mit einem Angestellten.
 

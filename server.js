@@ -1,5 +1,5 @@
 import express from 'express';
-import { RealtimeAgent, RealtimeSession } from '@openai/agents/realtime';
+import { RealtimeSession } from '@openai/agents/realtime';
 import { TwilioRealtimeTransportLayer } from '@openai/agents-extensions';
 import twilio from 'twilio';
 import { WebSocketServer } from 'ws';
@@ -7,6 +7,7 @@ import http from 'http';
 import dotenv from 'dotenv';
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { createSupervisorAgent } from './chatSupervisor/index.js';
 
 // Initialize dotenv
 dotenv.config();
@@ -55,6 +56,7 @@ const examplePolicyDocs = {
 // Tool definitions
 const supervisorAgentTools = [
   {
+    type: "function",
     name: "lookupPolicyDocument",
     description: "Tool zum Nachschlagen interner Dokumente und Richtlinien nach Thema oder Schlüsselwort.",
     parameters: {
@@ -67,12 +69,9 @@ const supervisorAgentTools = [
       },
       required: ["topic"],
     },
-    needsApproval: () => false,
-    execute: async (params) => {
-      return examplePolicyDocs[params.topic] || "Keine Richtlinie zu diesem Thema gefunden.";
-    }
   },
   {
+    type: "function",
     name: "updateEmployeeKrankStatus",
     description: "Tool zum Aktualisieren des Krankheitsstatus eines Mitarbeiters mit Grund und Zeitpunkt.",
     parameters: {
@@ -97,18 +96,9 @@ const supervisorAgentTools = [
       },
       required: ["name", "isKrank"],
     },
-    needsApproval: () => false,
-    execute: async (params) => {
-      const updateResult = await updateEmployee(params.name, {
-        isKrank: params.isKrank,
-        reason: params.reason,
-        reportedAt: params.reportedAt || new Date().toISOString()
-      });
-      console.log('Employee status updated:', updateResult);
-      return updateResult;
-    }
   },
   {
+    type: "function",
     name: "reportEmployeeSick",
     description: "Tool zum Melden einer Krankmeldung eines Mitarbeiters.",
     parameters: {
@@ -125,14 +115,9 @@ const supervisorAgentTools = [
       },
       required: ["name"],
     },
-    needsApproval: () => false,
-    execute: async (params) => {
-      const sickResult = await reportSick(params.name, params.reason);
-      console.log('Sick report created:', sickResult);
-      return sickResult;
-    }
   },
   {
+    type: "function",
     name: "reportEmployeeVacation",
     description: "Tool zum Melden eines Urlaubs eines Mitarbeiters.",
     parameters: {
@@ -161,24 +146,9 @@ const supervisorAgentTools = [
       },
       required: ["name", "startDate", "endDate"],
     },
-    needsApproval: () => false,
-    execute: async (params) => {
-      const vacationResult = {
-        success: true,
-        message: "Urlaub wurde eingetragen.",
-        data: {
-          name: params.name,
-          startDate: params.startDate,
-          endDate: params.endDate,
-          reason: params.reason,
-          additionalNotes: params.additionalNotes
-        }
-      };
-      console.log('Vacation report created:', vacationResult);
-      return vacationResult;
-    }
   },
   {
+    type: "function",
     name: "sendEmail",
     description: "Sendet eine Benachrichtigung an HR über Krankheit oder Urlaub.",
     parameters: {
@@ -216,23 +186,9 @@ const supervisorAgentTools = [
       },
       required: ["type", "name"],
     },
-    needsApproval: () => false,
-    execute: async (params) => {
-      const emailResult = {
-        success: true,
-        message: "Email wurde gesendet.",
-        data: {
-          type: params.type,
-          name: params.name,
-          reason: params.reason,
-          ...params
-        }
-      };
-      console.log('Email sent:', emailResult);
-      return emailResult;
-    }
   },
   {
+    type: "function",
     name: "getSickLeaveStats",
     description: "Tool zum Abrufen von Krankmeldungsstatistiken für einen bestimmten Zeitraum.",
     parameters: {
@@ -250,113 +206,104 @@ const supervisorAgentTools = [
       },
       required: ["period", "groupBy"],
     },
-    needsApproval: () => false,
-    execute: async (params) => {
-      const { startDate, endDate } = parseDateRange(params.period);
-      const stats = await calculateSickLeaveStats(startDate, endDate, params.groupBy);
-      await updateChartData(stats, `Anzahl der Krankmeldungen für ${params.period}`);
-      console.log('Stats generated:', stats);
-      return {
-        message: `Statistik für ${params.period} wurde erstellt.`,
-        stats: stats
-      };
-    }
   }
 ];
 
-// Create a new RealtimeAgent instance with the tools
-const agent = new RealtimeAgent({
-  name: "HR Assistant",
-  tools: supervisorAgentTools,
-  instructions: `Du bist der BackOffice Spezialist im HR Bereich der NEA. Du bist im direkten Telefonkontakt mit einem Angestellten.
+// Create supervisor agent instance
+const supervisorAgent = createSupervisorAgent(supervisorAgentTools);
 
-WICHTIGE DATUMSPARSING-REGELN:
-- Wenn jemand "heute" sagt, verwende das aktuelle Datum (${new Date().toISOString().split('T')[0]})
-- Wenn jemand "morgen" sagt, verwende das morgige Datum
-- Wenn jemand "in einer Woche" oder "nächste Woche" sagt, rechne 7 Tage zum aktuellen Datum
-- Wenn jemand "in 2 Wochen" sagt, rechne 14 Tage zum aktuellen Datum
-- Wenn jemand "nächsten Montag" sagt, finde den nächsten Montag
-- Konvertiere alle relativen Datenangaben in ISO-Format (YYYY-MM-DD)
-- Verwende IMMER das aktuelle Jahr, es sei denn, es wird explizit ein anderes Jahr genannt
+// Tool implementations
+async function handleToolCall(toolName, params) {
+  try {
+    switch (toolName) {
+      case "lookupPolicyDocument":
+        return examplePolicyDocs[params.topic] || "Keine Richtlinie zu diesem Thema gefunden.";
+      
+      case "updateEmployeeKrankStatus":
+        return await updateEmployee(params.name, {
+          isKrank: params.isKrank,
+          reason: params.reason,
+          reportedAt: params.reportedAt || new Date().toISOString()
+        });
+      
+      case "reportEmployeeSick":
+        return await reportSick(params.name, params.reason);
+      
+      case "reportEmployeeVacation":
+        // You need to implement the vacation reporting functionality
+        return { success: true, message: "Urlaub wurde eingetragen." };
+      
+      case "sendEmail":
+        // Implement email sending functionality
+        return { success: true, message: "Email wurde gesendet." };
+      
+      case "getSickLeaveStats":
+        const { startDate, endDate } = parseDateRange(params.period);
+        const stats = await calculateSickLeaveStats(startDate, endDate, params.groupBy);
+        updateChartData(stats, `Anzahl der Krankmeldungen für ${params.period}`);
+        return {
+          message: `Statistik für ${params.period} wurde erstellt.`,
+          stats: stats
+        };
+      
+      default:
+        throw new Error(`Unknown tool: ${toolName}`);
+    }
+  } catch (error) {
+    console.error(`Error executing tool ${toolName}:`, error);
+    throw error;
+  }
+}
 
-Wenn der Mitarbeiter eine Krankmeldung einreichen möchte, benötigst du folgende Informationen:
-- Voller Name
-- Krankheitsgrund
-- Voraussichtliche Dauer
-- Optional weitere Infos
-Sobald alle erforderlichen Daten vorliegen:
-1. Rufe reportEmployeeSick auf
-2. Rufe sendEmail auf (type="sick")
+// WebSocket setup for real-time communication
+const wss = new WebSocketServer({ server });
 
-Wenn der Mitarbeiter Urlaub einreichen möchte, benötigst du folgende Informationen:
-- Voller Name
-- Urlaubsgrund
-- Start- und Enddatum
-- Optional weitere Infos
-BEACHTE: Bei relativen Datumsangaben wie "heute bis in einer Woche" konvertiere diese in konkrete ISO-Daten.
-Sobald alle erforderlichen Daten vorliegen:
-1. Rufe reportEmployeeVacation auf
-2. Rufe sendEmail auf (type="vacation")
+wss.on('connection', (ws) => {
+  const session = new RealtimeSession();
+  const transport = new TwilioRealtimeTransportLayer(ws);
 
-Für Statistiken kannst du das getSickLeaveStats Tool verwenden.
-
-Sprich in kurzen, klaren Sätzen und bestätige immer die eingegebenen Daten bevor du die Tools aufrufst.
-Fange das Gespräch immer mit "Hi, hier spricht der HR Assistent der NEA, wie kann ich dir heute helfen?" an.`
+  ws.on('message', async (message) => {
+    try {
+      const data = JSON.parse(message);
+      const response = await supervisorAgent.handleMessage(data.message, session);
+      
+      if (response.toolCalls && response.toolCalls.length > 0) {
+        for (const toolCall of response.toolCalls) {
+          const result = await handleToolCall(toolCall.name, toolCall.parameters);
+          await supervisorAgent.submitToolResponse(result, toolCall.id, session);
+        }
+      }
+      
+      transport.sendMessage(response);
+    } catch (error) {
+      console.error('Error processing message:', error);
+      transport.sendMessage({
+        content: 'An error occurred while processing your request.',
+        toolCalls: []
+      });
+    }
+  });
 });
 
-// Express routes
-app.use(express.json());
-app.use(express.urlencoded({ extended: true })); // Add this for Twilio webhook body parsing
+// Root route
+app.get('/', (req, res) => {
+  res.send({ message: 'Twilio Media Stream Server is running!' });
+});
 
-// Twilio webhook route for incoming calls
+// Twilio incoming call route
 app.post('/incoming-call', (req, res) => {
-  console.log('Incoming call received:', req.body);
-  
-  const twiml = new VoiceResponse();
-  
-  // Connect the call to our WebSocket server for real-time communication
-  const connect = twiml.connect();
+  const response = new VoiceResponse();
+  response.say('Willkommen bei der NEA HR Hotline.');
+  const connect = response.connect();
   connect.stream({
     url: `wss://${req.headers.host}/media-stream`
   });
   
-  // Set response headers
   res.type('text/xml');
-  res.send(twiml.toString());
-});
-
-// WebSocket setup for real-time communication
-const wss = new WebSocketServer({ 
-  server,
-  path: '/media-stream' // Add specific path for media stream
-});
-
-wss.on('connection', (ws) => {
-  console.log('New WebSocket connection for media stream');
-  
-  const session = new RealtimeSession(agent);
-  
-  ws.on('message', async (message) => {
-    try {
-      const data = JSON.parse(message);
-      console.log('Received message:', data);
-      
-      const response = await session.sendMessage(data.message);
-      ws.send(JSON.stringify({ type: 'response', content: response }));
-    } catch (error) {
-      console.error('Error processing message:', error);
-      ws.send(JSON.stringify({ type: 'error', content: error.message }));
-    }
-  });
-  
-  ws.on('close', () => {
-    console.log('Client disconnected');
-    session.cleanup();
-  });
+  res.send(response.toString());
 });
 
 // Start the server
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  console.log(`WebSocket server is available at wss://[your-domain]/media-stream`);
 }); 

@@ -287,10 +287,25 @@ wss.on('connection', async (ws) => {
       }
     });
 
+    // Log all events for debugging
+    session.on('message', (message) => {
+      console.log('Session received message:', message);
+    });
+
+    session.on('response', (response) => {
+      console.log('Session sending response:', response);
+    });
+
     // Handle tool calls
     session.on('tool_call', async (toolCall) => {
+      console.log('Tool call received:', {
+        name: toolCall.name,
+        arguments: toolCall.arguments
+      });
+      
       try {
         const result = await toolCall.function(JSON.parse(toolCall.arguments));
+        console.log('Tool call result:', result);
         session.sendToolResponse(toolCall.id, result);
       } catch (error) {
         console.error('Tool call error:', error);
@@ -328,6 +343,16 @@ wss.on('connection', async (ws) => {
       console.log('Turn ended - User finished speaking');
     });
 
+    // Log raw WebSocket messages
+    ws.on('message', (data) => {
+      try {
+        const message = JSON.parse(data);
+        console.log('Raw WebSocket message received:', message);
+      } catch (e) {
+        console.log('Raw WebSocket data received:', data);
+      }
+    });
+
     await session.connect({
       apiKey: process.env.OPENAI_API_KEY
     });
@@ -342,9 +367,7 @@ wss.on('connection', async (ws) => {
 
     // Handle errors
     session.on('error', (error) => {
-      if (!error?.error?.error?.code?.includes('response_cancel_not_active')) {
-        console.error('Session error:', error);
-      }
+      console.error('Session error:', error);
     });
 
   } catch (error) {

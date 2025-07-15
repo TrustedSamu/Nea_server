@@ -2,7 +2,6 @@ import { RealtimeAgent } from '@openai/agents/realtime';
 
 export class SupervisorAgent extends RealtimeAgent {
   constructor(tools) {
-    console.log('### INITIALIZING SUPERVISOR AGENT WITH TOOLS ###');
     super({
       name: 'HR Assistant',
       model: 'gpt-4o-mini',
@@ -25,9 +24,21 @@ WICHTIGE REGELN:
 Beispiele für Tool-Nutzung:
 - "Ich bin krank" → "Tut mir leid das zu hören. Ich melde Sie krank. Wie ist Ihr vollständiger Name?"
 - "Wie sind die Urlaubsregeln?" → "Ich schaue in den Richtlinien nach" (lookupPolicyDocument benutzen)
-- "Ich möchte Urlaub" → "Gerne. Ich brauche Ihren Namen und die Urlaubsdaten" (dann reportEmployeeVacation benutzen)`
+- "Ich möchte Urlaub" → "Gerne. Ich brauche Ihren Namen und die Urlaubsdaten" (dann reportEmployeeVacation benutzen)`,
+      responseFormat: {
+        type: 'text',
+        schema: {
+          type: 'object',
+          properties: {
+            response: { type: 'string' },
+            shouldUseTool: { type: 'boolean' },
+            toolName: { type: 'string' },
+            toolArgs: { type: 'object' }
+          },
+          required: ['response', 'shouldUseTool']
+        }
+      }
     });
-    console.log('### SUPERVISOR AGENT INITIALIZED ###');
   }
 
   async handleMessage(message, session) {
@@ -40,14 +51,32 @@ Beispiele für Tool-Nutzung:
       console.log('Got response from super.handleMessage');
       console.log('Response:', JSON.stringify(response, null, 2));
       
-      if (response.toolCalls && response.toolCalls.length > 0) {
-        console.log('\n🛠️ TOOL CALLS DETECTED 🛠️');
-        console.log('Tools being called:', response.toolCalls.map(call => ({
-          name: call.name,
-          args: call.arguments
-        })));
-      } else {
-        console.log('\n⚠️ NO TOOL CALLS IN RESPONSE ⚠️');
+      // Check if the response indicates a tool should be used
+      if (response.shouldUseTool && response.toolName && response.toolArgs) {
+        console.log('\n🛠️ TOOL CALL REQUESTED 🛠️');
+        console.log('Tool:', response.toolName);
+        console.log('Args:', response.toolArgs);
+        
+        // Find the tool in our tools array
+        const tool = this.tools.find(t => t.name === response.toolName);
+        if (tool) {
+          try {
+            const result = await tool.function(response.toolArgs);
+            console.log('\n✅ TOOL CALL SUCCESSFUL');
+            console.log('Result:', result);
+            return {
+              content: response.response,
+              toolCalls: [{
+                name: response.toolName,
+                arguments: JSON.stringify(response.toolArgs),
+                result: result
+              }]
+            };
+          } catch (error) {
+            console.error('\n❌ TOOL CALL FAILED');
+            console.error(error);
+          }
+        }
       }
       
       return response;

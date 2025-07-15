@@ -287,24 +287,6 @@ wss.on('connection', async (ws) => {
       }
     });
 
-    // Handle tool calls
-    session.on('tool_call', async (toolCall) => {
-      console.log('\n### TOOL CALL RECEIVED ###');
-      console.log('Tool:', toolCall.name);
-      console.log('Arguments:', toolCall.arguments);
-      
-      try {
-        const result = await toolCall.function(JSON.parse(toolCall.arguments));
-        console.log('\n### TOOL CALL SUCCESSFUL ###');
-        console.log('Result:', result);
-        session.sendToolResponse(toolCall.id, result);
-      } catch (error) {
-        console.error('\n### TOOL CALL FAILED ###');
-        console.error('Error:', error);
-        session.sendToolResponse(toolCall.id, { error: error.message });
-      }
-    });
-
     // Track when agent starts/stops speaking
     session.on('response.started', () => {
       console.log('\n### AGENT STARTED SPEAKING ###');
@@ -333,24 +315,57 @@ wss.on('connection', async (ws) => {
       console.log('\n### USER TURN ENDED ###');
     });
 
+    // Connect to OpenAI
     await session.connect({
       apiKey: process.env.OPENAI_API_KEY
     });
     
+    console.log('Connected to OpenAI Realtime API');
+
+    // Handle WebSocket messages
+    ws.on('message', async (data) => {
+      try {
+        const message = JSON.parse(data);
+        console.log('\n### RECEIVED WEBSOCKET MESSAGE ###');
+        console.log('Message:', message);
+
+        if (message.type === 'text') {
+          const response = await supervisorAgent.handleMessage(message.content, session);
+          console.log('\n### AGENT RESPONSE ###');
+          console.log('Response:', response);
+
+          twilioTransport.sendMessage({
+            type: 'text',
+            content: response.content,
+            toolCalls: response.toolCalls || []
+          });
+        }
+      } catch (error) {
+        console.error('\n### ERROR PROCESSING MESSAGE ###');
+        console.error(error);
+        twilioTransport.sendMessage({
+          type: 'text',
+          content: 'Entschuldigung, es gab einen Fehler bei der Verarbeitung Ihrer Anfrage. Bitte versuchen Sie es erneut.',
+          toolCalls: []
+        });
+      }
+    });
+
     // Handle session close
     session.on('close', () => {
+      console.log('\n### SESSION CLOSED ###');
       ws.close();
     });
 
     // Handle errors
     session.on('error', (error) => {
-      if (error.message?.includes('tool')) {
-        console.error('Tool-related error:', error);
-      }
+      console.error('\n### SESSION ERROR ###');
+      console.error(error);
     });
 
   } catch (error) {
-    console.error('Error setting up session:', error);
+    console.error('\n### ERROR SETTING UP SESSION ###');
+    console.error(error);
     ws.close();
   }
 });

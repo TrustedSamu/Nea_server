@@ -6,13 +6,14 @@
   },
   "type": "module",
   "dependencies": {
-    "@openai/agents": "^0.0.11",
+   "@openai/agents": "^0.0.11",
     "@openai/agents-extensions": "^0.0.11",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "firebase": "^10.7.0",
     "twilio": "^4.19.0",
-    "ws": "^8.14.2"
+    "ws": "^8.14.2",
+    "zod": "^3.22.4"
   },
   "scripts": {
     "start": "node server.js",

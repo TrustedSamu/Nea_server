@@ -1,7 +1,18 @@
 import { collection, addDoc, getDocs, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from './firebase.js';
+import { db } from './firebase';
 
-export const addEmployee = async (employee) => {
+export interface Employee {
+  id?: string;
+  name: string;
+  position: string;
+  department: string;
+  email: string;
+  phoneNumber: string;
+  startDate: string;
+  isActive: boolean;
+}
+
+export const addEmployee = async (employee: Omit<Employee, 'id'>) => {
   try {
     const docRef = await addDoc(collection(db, 'employees'), {
       ...employee,
@@ -20,14 +31,14 @@ export const getEmployees = async () => {
     return querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
-    }));
+    })) as Employee[];
   } catch (error) {
     console.error('Error getting employees:', error);
     throw error;
   }
 };
 
-export const updateEmployee = async (id, updates) => {
+export const updateEmployee = async (id: string, updates: Partial<Employee>) => {
   try {
     const employeeRef = doc(db, 'employees', id);
     await updateDoc(employeeRef, updates);
@@ -37,7 +48,7 @@ export const updateEmployee = async (id, updates) => {
   }
 };
 
-export const deleteEmployee = async (id) => {
+export const deleteEmployee = async (id: string) => {
   try {
     const employeeRef = doc(db, 'employees', id);
     await deleteDoc(employeeRef);
@@ -48,7 +59,7 @@ export const deleteEmployee = async (id) => {
 };
 
 // Sample employee data for initial population
-export const sampleEmployees = [
+export const sampleEmployees: Omit<Employee, 'id'>[] = [
   {
     name: "Anna Schmidt",
     position: "HR Manager",
@@ -76,6 +87,7 @@ export const sampleEmployees = [
     startDate: "2021-06-10",
     isActive: true
   },
+  // Add more sample employees...
   {
     name: "Lars Fischer",
     position: "Sales Manager",

@@ -1,49 +1,40 @@
-# NEA Gourmet Twilio Voice Agent
+# Twilio + OpenAI Voice Agent Setup
 
-Voice agent service that handles incoming calls using Twilio Media Streams and OpenAI's Realtime API.
+## Current Setup
 
-## Setup
+1. **OpenAI Voice Agent Server**: Running on port 5050
+   - Endpoint: `http://localhost:5050/incoming-call` (TwiML webhook)
+   - WebSocket: `ws://localhost:5050/media-stream` (Audio stream)
 
-1. Install dependencies:
-```bash
-npm install
-```
+2. **Twilio Dev Phone**: Starting on port 3001
+   - Web interface: `http://localhost:3001`
+   - Creates virtual phone for testing
 
-2. Create a `.env` file with the following variables:
-```env
-OPENAI_API_KEY=your_openai_api_key
-FIREBASE_API_KEY=your_firebase_api_key
-FIREBASE_AUTH_DOMAIN=your_firebase_domain
-FIREBASE_PROJECT_ID=your_project_id
-FIREBASE_STORAGE_BUCKET=your_storage_bucket
-FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-FIREBASE_APP_ID=your_app_id
-PORT=5050
-```
+## To Connect Them:
 
-3. Run the development server:
-```bash
-npm run dev
-```
+1. **Open the Dev Phone Interface**: 
+   - Go to `http://localhost:3001` in your browser
+   - You should see a virtual phone interface
 
-## Deployment
+2. **Configure the Dev Phone to use our voice agent**:
+   - In the Dev Phone interface, you'll need to set the webhook URL to:
+   - `http://localhost:5050/incoming-call`
 
-This service is designed to be deployed to Railway.app:
+3. **Test the Connection**:
+   - Make a call using the Dev Phone interface
+   - You should see debug logs in your voice agent server
+   - The call should connect to OpenAI and you should hear the AI assistant
 
-1. Create a new project on Railway.app
-2. Connect this repository
-3. Set the environment variables in Railway dashboard
-4. Deploy!
+## Debug Information
 
-## Twilio Configuration
+With `DEBUG=openai-agents:extensions:twilio*` enabled, you should see:
+- WebSocket connections
+- Twilio events
+- OpenAI API connections
+- Audio stream data
 
-After deployment:
-
-1. Go to your Twilio console
-2. Configure your Twilio phone number
-3. Set the voice webhook URL to: `https://your-railway-app.railway.app/incoming-call`
-
-## Development
-
-- `npm run dev` - Start development server with hot reload
-- `npm start` - Start production server 
+## Current Issues to Check:
+- Make sure both servers are running
+- Check the Dev Phone web interface loads
+- Verify webhook URL configuration
+- Look for any error messages in the logs 

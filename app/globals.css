@@ -1,0 +1,200 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-inter: 'Inter', sans-serif;
+    --font-space: 'Space Grotesk', sans-serif;
+    --accent-rgb: 251, 113, 28;
+    --accent-secondary-rgb: 249, 115, 22;
+  }
+
+  html {
+    background-color: #0f0f0f;
+    min-height: 100%;
+  }
+
+  body {
+    position: relative;
+    background-color: #0f0f0f;
+    color: #ffffff;
+    min-height: 100vh;
+    font-family: var(--font-inter);
+  }
+
+  /* Light mode styles */
+  html.light {
+    background-color: #f8f9fa;
+  }
+
+  html.light body {
+    background-color: #f8f9fa;
+    color: #1f1f1f;
+  }
+
+  /* Grid Effect */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: 
+      radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+        rgba(var(--accent-rgb), 0.08) 0%,
+        transparent 35%),
+      linear-gradient(to right, transparent 0%, rgba(var(--accent-rgb), 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, transparent 0%, rgba(var(--accent-rgb), 0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 24px 24px, 24px 24px;
+    background-position: 0 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 0;
+  }
+
+  /* Show grid only when not hovering over interactive elements */
+  body:hover::before {
+    opacity: 1;
+    transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Hide grid when hovering over these elements */
+  body:has(.kpi-card:hover)::before,
+  body:has(.glass-card:hover)::before,
+  body:has(.nav-link:hover)::before,
+  body:has(.btn-primary:hover)::before,
+  body:has(.btn-secondary:hover)::before,
+  body:has(.sidebar:hover)::before {
+    opacity: 0;
+    transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@layer components {
+  .hero-gradient {
+    @apply bg-gradient-to-r from-accent/20 via-accent-secondary/10 to-transparent;
+  }
+  
+  .glass-card {
+    @apply bg-dark-200/50 backdrop-blur-lg border border-dark-100/20 rounded-xl;
+  }
+
+  .kpi-card {
+    @apply glass-card p-6 hover:border-accent/40 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl hover:shadow-accent/20;
+  }
+
+  .nav-link {
+    @apply text-light-100 hover:text-accent transition-colors duration-200 font-medium;
+  }
+
+  .btn-primary {
+    @apply px-6 py-3 bg-accent text-dark font-bold rounded-lg hover:bg-accent/90 transition-all duration-200 transform hover:scale-105 shadow-lg shadow-accent/25;
+  }
+
+  .btn-secondary {
+    @apply px-6 py-3 bg-dark-200 text-light border border-accent/20 font-bold rounded-lg hover:border-accent transition-all duration-200 transform hover:scale-105;
+  }
+
+  .sidebar {
+    @apply bg-dark-300/90 backdrop-blur-xl border-r border-dark-100/20;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-accent via-orange-400 to-orange-500;
+  }
+  
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Line clamp utilities */
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #2a2a2a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #fb711c;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #f97316;
+}
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Add transition for notification glow */
+.glass-card {
+  transition: box-shadow 0.3s ease, transform 0.3s ease, ring 0.3s ease;
+}
+
+/* Add smooth transition for ring effect */
+.ring-2 {
+  transition: all 0.3s ease;
+}
+
+/* Add transition for notification dot */
+.animate-pulse {
+  transition: opacity 0.3s ease;
+}
+
+/* Font utilities */
+.font-space {
+  font-family: var(--font-space);
+}
+
+.font-inter {
+  font-family: var(--font-inter);
+}
+
+/* Handwriting font for legacy compatibility */
+.font-handwriting {
+  font-family: 'Kalam', cursive;
+}
